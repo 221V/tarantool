@@ -242,11 +242,11 @@ INIT_TEST_ENV_OSX=\
 		launchctl limit maxproc || : ; \
 		ulimit -u ${MAX_PROC} || : ; \
 		ulimit -u ; \
-		rm -rf /tmp/tnt
+		rm -rf ${OSX_VARDIR}
 
 test_osx_no_deps: build_osx
 	${INIT_TEST_ENV_OSX}; \
-	cd test && ./test-run.py --vardir /tmp/tnt --force $(TEST_RUN_EXTRA_PARAMS)
+	cd test && ./test-run.py --vardir ${OSX_VARDIR} --force $(TEST_RUN_EXTRA_PARAMS)
 
 test_osx: deps_osx test_osx_no_deps
 
@@ -265,7 +265,7 @@ test_static_build_cmake_osx: base_deps_osx
 	cd static-build && cmake -DCMAKE_TARANTOOL_ARGS="-DCMAKE_BUILD_TYPE=RelWithDebInfo;-DENABLE_WERROR=ON" . && \
 	make -j && ctest -V
 	${INIT_TEST_ENV_OSX}; \
-	cd test && ./test-run.py --vardir /tmp/tnt \
+	cd test && ./test-run.py --vardir ${OSX_VARDIR} \
 		--builddir ${PWD}/static-build/tarantool-prefix/src/tarantool-build \
 		--force $(TEST_RUN_EXTRA_PARAMS)
 
