@@ -82,6 +82,7 @@ t
   - memory
   - package
   - pid
+  - raft
   - replication
   - replication_anon
   - ro
