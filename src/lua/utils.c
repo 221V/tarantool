@@ -29,6 +29,7 @@
  * SUCH DAMAGE.
  */
 #include "lua/utils.h"
+#include <lj_trace.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -1309,10 +1310,57 @@ tarantool_lua_utils_init(struct lua_State *L)
 	return 0;
 }
 
+/*
+ * XXX: There is already defined <panic> macro in say.h header
+ * (included in diag.h). As a result the call below is misexpanded
+ * and compilation fails with the corresponding error. To avoid
+ * this error the macro is temporary renamed and restored later.
+ * Compilation now fails for the following cases:
+ * * temporary name <_panic> is used in this translation unit
+ * * <panic> is not define, so this hack can be freely dropped
+ */
+#if defined(panic) && !defined(_panic)
+#  define _panic panic
+#  undef panic
+#else
+#  error "Can't redefine <panic> macro"
+#endif
+
 /**
  * This routine encloses the checks and actions to be done when
  * the running fiber yields the execution.
+ * Since Tarantool fibers don't switch-over the way Lua coroutines
+ * do the platform ought to notify JIT engine when one lua_State
+ * substitutes another one.
  */
 void cord_on_yield(void)
 {
+	struct global_State *g = G(tarantool_L);
+	/*
+	 * XXX: Switching fibers while running the trace leads to
+	 * code misbehaviour and failures, so stop its execution.
+	 */
+	if (unlikely(tvref(g->jit_base))) {
+		/*
+		 * XXX: mcode is executed only in scope of Lua
+		 * world and one can obtain the corresponding Lua
+		 * coroutine from the fiber storage.
+		 */
+		struct lua_State *L = fiber()->storage.lua.stack;
+		assert(L != NULL);
+		lua_pushstring(L, "Fiber is switched on the trace");
+		if (g->panic)
+			g->panic(L);
+		exit(EXIT_FAILURE);
+	}
+	/*
+	 * Unconditionally abort trace recording whether fibers
+	 * switch each other. Otherwise, further compilation may
+	 * lead to a failure on any next compiler phase.
+	 */
+	lj_trace_abort(g);
 }
+
+/* Restore <panic> macro back */
+#define panic _panic
+#undef _panic
