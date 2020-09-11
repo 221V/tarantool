@@ -2441,6 +2441,14 @@ on_replace_dd_space(struct trigger * /* trigger */, void *event)
 				  "view");
 			return -1;
 		}
+		if (def->opts.is_view && (def->field_count !=
+		    old_space->def->field_count)) {
+			diag_set(ClientError, ER_ALTER_SPACE,
+				  space_name(old_space),
+				  "can not modify format or field_count of a "
+				  "view");
+			return -1;
+		}
 		/*
 		 * Allow change of space properties, but do it
 		 * in WAL-error-safe mode.
