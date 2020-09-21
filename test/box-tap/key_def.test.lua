@@ -215,7 +215,7 @@ end
 
 -- Case: extract_key().
 test:test('extract_key()', function(test)
-    test:plan(13)
+    test:plan(14)
 
     local key_def_a = key_def_lib.new({
         {type = 'unsigned', fieldno = 1},
@@ -244,6 +244,18 @@ test:test('extract_key()', function(test)
         {type = 'string', fieldno = 1, path = 'a.b'},
     }):extract_key({{a = {b = 'foo'}}}):totable()
     test:is_deeply(res, {'foo'}, 'JSON path (table argument)')
+
+    -- Composite types.
+    local tuple = {{{key = 'aa', data = 'aaaa'},
+                    {key = 'ab', data = 'aabb'},
+                    {key = 'bb', data = 'bbbb'}}, box.NULL,
+                    {a = 5, b = 6}}
+    local res = key_def_lib.new({
+        {type = 'array', fieldno = 1},
+        {type = 'map', fieldno = 2, is_nullable = true},
+        {type = 'any', fieldno = 3},
+    }):extract_key(tuple):totable()
+    test:is_deeply(res, tuple, 'Composite types')
 
     -- A key def has a **nullable** part with a field that is over
     -- a tuple size.
@@ -335,7 +347,7 @@ end)
 
 -- Case: compare().
 test:test('compare()', function(test)
-    test:plan(8)
+    test:plan(9)
 
     local key_def_a = key_def_lib.new({
         {type = 'unsigned', fieldno = 1},
@@ -365,11 +377,19 @@ test:test('compare()', function(test)
             'case 3: less (table argument)')
     test:is(key_def_b:compare(tuple_a:totable(), tuple_c:totable()), 0,
             'case 4: equal (table argument)')
+
+    local cmp_err = 'Unsupported field type: array'
+    local key_def = key_def_lib.new({
+        {type = 'string', fieldno = 1},
+        {type = 'array', fieldno = 2, is_nullable = true},
+    })
+    local ok, err = pcall(key_def.compare, key_def, {'aa', {}}, {'bb', box.NULL})
+    test:is_deeply({ok, tostring(err)}, {false, cmp_err}, 'no composite comparison')
 end)
 
 -- Case: compare_with_key().
 test:test('compare_with_key()', function(test)
-    test:plan(2)
+    test:plan(3)
 
     local key_def_b = key_def_lib.new({
         {type = 'number', fieldno = 2},
@@ -382,6 +402,14 @@ test:test('compare_with_key()', function(test)
 
     local key = box.tuple.new({1, 22})
     test:is(key_def_b:compare_with_key(tuple_a, key), 0, 'tuple')
+
+    local cmp_err = 'Unsupported field type: map'
+    local key_def = key_def_lib.new({
+        {type = 'string', fieldno = 1},
+        {type = 'map', fieldno = 2},
+    })
+    local ok, err = pcall(key_def.compare_with_key, key_def, {'aa', {}}, {'bb', box.NULL})
+    test:is_deeply({ok, tostring(err)}, {false, cmp_err}, 'no composite comparison')
 end)
 
 -- Case: totable().

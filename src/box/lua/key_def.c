@@ -127,21 +127,9 @@ luaT_key_def_set_part(struct lua_State *L, struct key_part_def *part,
 	const char *type_name = lua_tolstring(L, -1, &type_len);
 	lua_pop(L, 1);
 	part->type = field_type_by_name(type_name, type_len);
-	switch (part->type) {
-	case FIELD_TYPE_ANY:
-	case FIELD_TYPE_VARBINARY:
-	case FIELD_TYPE_ARRAY:
-	case FIELD_TYPE_MAP:
-		/* Tuple comparators don't support these types. */
-		diag_set(IllegalParams, "Unsupported field type: %s",
-			 type_name);
-		return -1;
-	case field_type_MAX:
+	if (part->type == field_type_MAX) {
 		diag_set(IllegalParams, "Unknown field type: %s", type_name);
 		return -1;
-	default:
-		/* Pass though. */
-		break;
 	}
 
 	/* Set part->is_nullable and part->nullable_action. */
@@ -252,6 +240,22 @@ luaT_check_key_def(struct lua_State *L, int idx)
 	return *key_def_ptr;
 }
 
+static bool
+key_def_comparable(struct key_def *key_def)
+{
+	for (uint32_t i = 0; i < key_def->part_count; ++i) {
+		if (key_def->parts[i].type == FIELD_TYPE_ANY ||
+		    key_def->parts[i].type == FIELD_TYPE_ARRAY ||
+		    key_def->parts[i].type == FIELD_TYPE_MAP) {
+			/* Tuple comparators don't support these types. */
+			diag_set(IllegalParams, "Unsupported field type: %s",
+				 field_type_strs[key_def->parts[i].type]);
+			return false;
+		}
+	}
+	return true;
+}
+
 /**
  * Free a key_def from a Lua code.
  */
@@ -316,6 +320,9 @@ lbox_key_def_compare(struct lua_State *L)
 				     "compare(tuple_a, tuple_b)");
 	}
 
+	if (!key_def_comparable(key_def))
+		return luaT_error(L);
+
 	struct tuple *tuple_a, *tuple_b;
 	if ((tuple_a = luaT_key_def_check_tuple(L, key_def, 2)) == NULL)
 		return luaT_error(L);
@@ -348,6 +355,9 @@ lbox_key_def_compare_with_key(struct lua_State *L)
 		return luaL_error(L, "Usage: key_def:"
 				     "compare_with_key(tuple, key)");
 	}
+
+	if (!key_def_comparable(key_def))
+		return luaT_error(L);
 
 	struct tuple *tuple = luaT_key_def_check_tuple(L, key_def, 2);
 	if (tuple == NULL)
