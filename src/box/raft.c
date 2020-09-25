@@ -584,7 +584,7 @@ end_dump:
 			raft_sm_wait_election_end();
 		} else {
 			/* No leaders, no votes. */
-			raft_sm_schedule_new_election();
+			raft_sm_schedule_new_vote(instance_id);
 		}
 	} else {
 		memset(&req, 0, sizeof(req));
