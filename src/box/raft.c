@@ -631,8 +631,9 @@ static int
 raft_worker_f(va_list args)
 {
 	(void)args;
-	bool is_idle = true;
+	bool is_idle;
 	while (!fiber_is_cancelled()) {
+		is_idle = true;
 		if (raft.is_write_in_progress) {
 			raft_worker_handle_io();
 			is_idle = false;
