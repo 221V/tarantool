@@ -210,6 +210,17 @@ static void
 raft_sm_wait_leader_dead(void);
 
 /**
+ * Wait for the leader death timeout until a leader lets the node know he is
+ * alive. Otherwise the node will start a new term. Can be useful when it is not
+ * known whether the leader is alive, but it is undesirable to start a new term
+ * immediately. Because in case the leader is alive, a new term would stun him
+ * and therefore would stun DB write requests. Usually happens when a follower
+ * restarts and may need some time to hear something from the leader.
+ */
+static void
+raft_sm_wait_leader_found(void);
+
+/**
  * If election is started by this node, or it voted for some other node started
  * the election, and it can be a leader itself, it will wait until the current
  * election times out. When it happens, the node will start new election.
@@ -786,6 +797,19 @@ raft_sm_wait_leader_dead(void)
 }
 
 static void
+raft_sm_wait_leader_found(void)
+{
+	assert(!ev_is_active(&raft.timer));
+	assert(!raft.is_write_in_progress);
+	assert(raft.is_candidate);
+	assert(raft.state == RAFT_STATE_FOLLOWER);
+	assert(raft.leader == 0);
+	double death_timeout = replication_disconnect_timeout();
+	ev_timer_set(&raft.timer, death_timeout, death_timeout);
+	ev_timer_start(loop(), &raft.timer);
+}
+
+static void
 raft_sm_wait_election_end(void)
 {
 	assert(!ev_is_active(&raft.timer));
@@ -811,12 +835,20 @@ raft_sm_start(void)
 	assert(raft.state == RAFT_STATE_FOLLOWER);
 	raft.is_enabled = true;
 	raft.is_candidate = raft.is_cfg_candidate;
-	if (!raft.is_candidate)
+	if (!raft.is_candidate) {
 		/* Nop. */;
-	else if (raft.leader != 0)
+	} else if (raft.leader != 0) {
 		raft_sm_wait_leader_dead();
-	else
-		raft_sm_schedule_new_election();
+	} else {
+		/*
+		 * Don't start new election. The situation is most likely
+		 * happened because this node was restarted. Instance restarts
+		 * may happen in the cluster, and each restart shouldn't
+		 * disturb the current leader. Give it time to notify this node
+		 * that there is a leader.
+		 */
+		raft_sm_wait_leader_found();
+	}
 	box_update_ro_summary();
 }
 
@@ -892,7 +924,7 @@ raft_cfg_is_candidate(bool is_candidate)
 		 * node who sent newer data to this node.
 		 */
 		if (raft.leader == 0 && raft_is_fully_on_disk())
-			raft_sm_schedule_new_election();
+			raft_sm_wait_leader_found();
 	} else if (raft.state != RAFT_STATE_FOLLOWER) {
 		if (raft.state == RAFT_STATE_LEADER)
 			raft.leader = 0;
@@ -944,6 +976,13 @@ raft_cfg_death_timeout(void)
 		ev_timer_set(&raft.timer, timeout, timeout);
 		ev_timer_start(loop(), &raft.timer);
 	}
+}
+
+void
+raft_new_term(void)
+{
+	if (raft.is_enabled)
+		raft_sm_schedule_new_term(raft.volatile_term + 1);
 }
 
 static void

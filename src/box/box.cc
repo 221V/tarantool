@@ -2799,8 +2799,18 @@ box_cfg_xc(void)
 	title("running");
 	say_info("ready to accept requests");
 
-	if (!is_bootstrap_leader)
+	if (!is_bootstrap_leader) {
 		replicaset_sync();
+	} else {
+		/*
+		 * When the cluster is just bootstrapped and this instance is a
+		 * leader, it makes no sense to wait for a leader appearance.
+		 * There is no one. Moreover this node *is* a leader, so it
+		 * should take the control over the situation and start a new
+		 * term immediately.
+		 */
+		raft_new_term();
+	}
 
 	/* box.cfg.read_only is not read yet. */
 	assert(box_is_ro());

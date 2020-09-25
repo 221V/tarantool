@@ -230,6 +230,14 @@ void
 raft_cfg_death_timeout(void);
 
 /**
+ * Bump the term. When it is persisted, the node checks if there is a leader,
+ * and if there is not, a new election is started. That said, this function can
+ * be used as tool to forcefully start new election, or restart an existing.
+ */
+void
+raft_new_term(void);
+
+/**
  * Save complete Raft state into a request to be sent to other instances of the
  * cluster. It is allowed to save anything here, not only persistent state.
  */
